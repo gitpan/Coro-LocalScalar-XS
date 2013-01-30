@@ -6,7 +6,7 @@ if($@){ die 'Install Coro first! '};
 
 WriteMakefile(coro_args(
   'NAME' => 'Coro::LocalScalar::XS',
-  'VERSION' => '0.1',
+  'VERSION' => '0.2',
   'OPTIMIZE' => ' -O2'));
 
 # Remove the Makefile dependency. Causes problems on a few systems.

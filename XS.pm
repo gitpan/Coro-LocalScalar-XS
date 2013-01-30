@@ -4,7 +4,7 @@ use Coro;
 use Exporter 'import';
 our @EXPORT = qw/localize/;
 
-$Coro::LocalScalar::XS = '0.1';
+$Coro::LocalScalar::XS = '0.2';
 DynaLoader::bootstrap Coro::LocalScalar::XS $Coro::LocalScalar::XS;
 
 =head1 NAME
@@ -14,6 +14,9 @@ Coro::LocalScalar::XS - Different scalar values in coroutines
 =head1 ABOUT
 
 This is optimized XS version of L<Coro::LocalScalar>. It's almost two times faster and has simplier api - only one function. 
+This module destroys all local data(and DESTROYs are called) when coroutine get destroyed. This is useful for example if you want to have global variable $request with different object in each coro. 
+
+Coro::LocalScalar::XS keeps reference to localized variable, so localize only variables, that will persist all execution time. Localizing hundreds of variables is also bad idea, because each variable adds little overhead when each coro is destroyed
 
 =head1 SYNOPSIS
 
@@ -82,15 +85,32 @@ L<Coro::Localize> is little bit faster, but Coro::LocalScalar::XS allows localiz
 
 sub _set_ondestroy_cb {
 	my $coro = $Coro::current;
-	$Coro::current->on_destroy(sub {
-		Coro::LocalScalar::XS::cleanup($coro);
+	
+	$coro->on_destroy(sub {
+		# when i use magick to store local copy of var for each coroutine the current value is stored in localized scalar itself
+		# sv_setsv(sv, &PL_sv_undef ); from XS has no effect and value is still stored in scalar
+		# so if value in scalar is object, then when coroutine gets destroyed Coro::LocalScalar::XS destroys it's internal storage, 
+		# but one reference persists in scalar itself and object destructor will not be called till scalar will be reassigned
+		
+		Coro::LocalScalar::XS::cleanup($coro); # clean internal storage and disable magick
+		
+		$$_ = undef for @Coro::LocalScalar::XS::localized; # reassign all localized scalar to call destructors
+		
+		Coro::LocalScalar::XS::reenable_magick(); # enable magick
+		
+		$coro = undef ; 
 	});
+	
+	undef;
 }
 
+
+our @localized;
 
 sub localize($) {
 	shift if $_[0] eq __PACKAGE__;
 	
+	push @localized, \$_[0];
 	Coro::LocalScalar::XS::_init($_[0]);
 }
 

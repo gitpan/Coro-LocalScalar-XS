@@ -11,7 +11,7 @@ typedef struct {
 
 
 static HV* data_hash;
-
+static char disable_magick = 0;
 
 static HV* get_local_storage (void){
 	
@@ -36,6 +36,9 @@ static HV* get_local_storage (void){
 
 
 static int localized_read (pTHX_ SV* sv, MAGIC* mg) {
+	if(disable_magick){
+		return 0;
+	}
 	
 	SV** local_value = hv_fetch( get_local_storage() , (char *) sv, sizeof(SV*), 0);
 	
@@ -47,10 +50,11 @@ static int localized_read (pTHX_ SV* sv, MAGIC* mg) {
 }
 
 static int localized_write (pTHX_ SV* sv, MAGIC* mg) {
-
-	hv_store( get_local_storage() ,  (char *) sv, sizeof(SV*) , newSVsv(sv) , 0);
+	if(disable_magick){
+		return 0;
+	}
 	
-	sv_setsv(sv, &PL_sv_undef );
+	hv_store( get_local_storage() ,  (char *) sv, sizeof(SV*) , newSVsv(sv) , 0);
 	
 	return 0;
 }
@@ -92,18 +96,13 @@ void
 cleanup(coro)
 	SV* coro
 	CODE:
-		HV* local_storage = (HV*) SvRV(  *(hv_fetch( data_hash , (char *) SvRV(coro) , sizeof(HV*), 0)) );
-		
-		int keys = hv_iterinit( local_storage);
-		SV* sv;
-		int i;
-		int len;
-		for(i = 0; i < keys; i++){
-			HE* entry = hv_iternext( local_storage );
-			
-			sv_setsv( (SV*) hv_iterkey(entry, &len) , &PL_sv_undef );
-		}
-		
 		hv_delete(data_hash, (char *) SvRV(coro), sizeof(HV*), G_DISCARD);
+		
+		disable_magick = 1;
+		
+void
+reenable_magick()
+	CODE:
+		disable_magick = 0;
 		
 
